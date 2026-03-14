@@ -5,14 +5,17 @@ Endpoints:
   GET   /v1/audits/{audit_id}             — Poll audit status / get report
   GET   /v1/audits/{audit_id}/findings    — Get findings only (convenience)
   GET   /health                           — Health check
+  GET   /                                 — Serve React frontend (from frontend/dist)
 """
 from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from aegis.agent import run_audit
 from aegis.models import (
@@ -58,6 +61,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Serve the built React frontend from frontend/dist (if it exists)
+FRONTEND_DIST = Path(__file__).parent.parent / "frontend" / "dist"
+if FRONTEND_DIST.exists():
+    app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
+
 
 # ---------------------------------------------------------------------------
 # Routes
@@ -68,6 +76,15 @@ app = FastAPI(
 async def health():
     """Health check endpoint."""
     return HealthResponse(status="ok", version="1.0.0")
+
+
+@app.get("/", include_in_schema=False)
+async def serve_frontend():
+    """Serve the React frontend SPA."""
+    index = FRONTEND_DIST / "index.html"
+    if index.exists():
+        return FileResponse(index)
+    return JSONResponse({"message": "Aegis API — frontend not built. Run: cd frontend && npm run build"}, status_code=200)
 
 
 @app.post("/v1/audits", response_model=SubmitResponse, status_code=202)
